@@ -148,8 +148,9 @@ function Rg() {
     <p><small>กดชื่อคนที่ร่วมเล่น แล้วไปต่อที่การเช็ค role</small></p>
     <div class="chips">${S.players.map((p, i) => `<button class="g${draft[i] ? ' on' : ''}" data-a="pick" data-i="${i}">${esc(p)}</button>`).join('')}</div>
     <h3>role ที่มีในเกม</h3>
-    <ul>${gameRoles().map((r, j) => `<li><label><input type="checkbox" data-rk="${j}"${roleDraft[r] ? ' checked' : ''}> ${esc(r)}</label>
+    <ul>${S.roles.map((r, j) => `<li><label><input type="checkbox" data-rk="${j}"${roleDraft[r] ? ' checked' : ''}> ${esc(r)}</label>
       ${roleDraft[r] ? `<span>จำนวน <input type="number" min="1" max="9" value="${roleDraft[r]}" data-rc="${j}" style="width:64px"></span>` : ''}</li>`).join('')}</ul>
+    <p><small>รวมตามที่ติ๊ก ${S.roles.reduce((t, r) => t + (roleDraft[r] || 0), 0)} คน / ผู้เล่นที่เลือก ${Object.keys(draft).length} คน (ถ้าไม่ติ๊กชาวบ้าน คนที่เหลือจะเป็นชาวบ้านเอง)</small></p>
     <div class="row"><button data-a="start">ไปเช็ค role (${Object.keys(draft).length} คน)</button></div>`;
   }
   if (g.ph === 'เช็ค') {
@@ -166,7 +167,7 @@ function Rg() {
           <button data-a="who" data-j="${j}">เสร็จ</button></div>` : ''}</li>`;
     }).join('')}
     <li>"ทุกคนลืมตาได้"</li></ol>
-    <p><small>ชาวบ้าน (ที่เหลือ): ${g.parts.length - taken.size} คน</small></p>
+    <p><small>ชาวบ้าน (ที่เหลือ): ${g.parts.length - taken.size} คน${g.rc && g.rc['ชาวบ้าน'] ? ` (ตั้งไว้ ${g.rc['ชาวบ้าน']}${g.rc['ชาวบ้าน'] === g.parts.length - taken.size ? ' ✓' : ' ⚠ ไม่ตรง'})` : ''}</small></p>
     <div class="row"><button class="g" data-a="back">ย้อนกลับ</button><button data-a="begin">ไปโหวตก่อนคืนที่ 1</button><button class="d" data-a="cancel">ยกเลิก</button></div>`;
   }
   const d = dead(g), alive = g.players.filter(p => !d.has(p.name)).map(p => p.name);
@@ -280,12 +281,12 @@ document.addEventListener('submit', e => {
 
 document.addEventListener('input', e => {
   if (e.target.id === 'mod') { S.mod = e.target.value.trim(); save(); }
-  if (e.target.dataset.rc) roleDraft[gameRoles()[+e.target.dataset.rc]] = Math.max(1, Math.min(9, +e.target.value || 1));
+  if (e.target.dataset.rc) roleDraft[S.roles[+e.target.dataset.rc]] = Math.max(1, Math.min(9, +e.target.value || 1));
 });
 
 document.addEventListener('change', e => {
   if (e.target.dataset.rk) {
-    const r = gameRoles()[+e.target.dataset.rk];
+    const r = S.roles[+e.target.dataset.rk];
     if (roleDraft[r]) delete roleDraft[r]; else roleDraft[r] = 1;
     return R();
   }
