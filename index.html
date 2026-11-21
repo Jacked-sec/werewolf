@@ -74,9 +74,9 @@ let draft = {}; // index ผู้เล่นที่ติ๊กร่วม�
 const gameRoles = () => S.roles.filter(x => x !== 'ชาวบ้าน');
 const checkRoles = g => {
   const r = gameRoles().filter(x => !g.rc || g.rc[x]), w = x => x.includes('หมาป่า'); // เกมเก่าไม่มี rc = ทุก role
-  return [...r.filter(x => !w(x)), ...r.filter(w)];
+  return [...r.filter(x => !w(x)), 'ชาวบ้าน', ...r.filter(w)]; // ชาวบ้านเรียกเสมอ ก่อนฝั่งหมาป่า
 };
-const roleMax = (g, r) => g.rc ? g.rc[r] || 1 : 99;
+const roleMax = (g, r) => g.rc ? g.rc[r] || (r === 'ชาวบ้าน' ? 99 : 1) : 99;
 let roleDraft = S.lastRoles || {}; // role ที่ติ๊กไว้ -> จำนวน (จำไว้ใช้เกมถัดไป)
 let pickJ = -1; // role ที่กำลังเปิดตัวเลือกคนในหน้าเช็ค role
 
@@ -155,20 +155,20 @@ function Rg() {
   }
   if (g.ph === 'เช็ค') {
     const taken = new Set(Object.values(g.assign).flat());
-    const roles = checkRoles(g), firstW = roles.findIndex(wolf), n = (g.rc && g.rc['ชาวบ้าน']) || g.parts.length - taken.size; // ใช้จำนวนที่ตั้งไว้ ถ้าไม่ตั้งใช้จำนวนที่เหลือ
-    const vil = n > 0 ? `<li>"ชาวบ้าน ${n} คน ชูนิ้วขึ้นมา"</li>` : ''; // เรียกก่อนฝั่งหมาป่า (หมาป่าอยู่ท้ายสุดเสมอ)
+    const roles = checkRoles(g);
     return `<h2>เช็ค role</h2>
     <p><small>อ่านบทตามลำดับ กดวงเล็บเพื่อเลือกว่าใครเป็น role นั้น คนที่ไม่ได้เลือกจะเป็นชาวบ้าน</small></p>
     <ol class="sc"><li>"ทุกคนหลับตา ปิดหน้าไว้ ไม่แอบดู"</li>
     ${roles.map((r, j) => {
       const a = g.assign[r] || [], max = roleMax(g, r);
-      return (j === firstW ? vil : '') + `<li>"${esc(r)}ลืมตา" <button class="g" data-a="who" data-j="${j}">(${a.length ? esc(a.join(', ')) : 'เลือก'}${max > 1 && max < 99 ? ` ${a.length}/${max}` : ''})</button> "${esc(r)}หลับตา"
+      const vil = r === 'ชาวบ้าน'; // ชาวบ้านไม่ลืมตา แต่ชูนิ้วให้ mod นับ
+      return `<li>${vil ? `"ชาวบ้าน${max < 99 ? ` ${max} คน` : ''} ชูนิ้วขึ้นมา"` : `"${esc(r)}ลืมตา"`} <button class="g" data-a="who" data-j="${j}">(${a.length ? esc(a.join(', ')) : 'เลือก'}${max > 1 && max < 99 ? ` ${a.length}/${max}` : ''})</button>${vil ? '' : ` "${esc(r)}หลับตา"`}
         ${pickJ === j ? `<div class="chips">${g.parts.filter(n => a.includes(n) || !taken.has(n)).map(n =>
           `<button class="g${a.includes(n) ? ' on' : ''}"${!a.includes(n) && a.length >= max ? ' disabled' : ''} data-a="asg" data-j="${j}" data-n="${g.parts.indexOf(n)}">${esc(n)}</button>`).join('')}
           <button data-a="who" data-j="${j}">เสร็จ</button></div>` : ''}</li>`;
-    }).join('')}${firstW < 0 ? vil : ''}
+    }).join('')}
     <li>"ทุกคนลืมตาได้"</li></ol>
-    <p><small>ชาวบ้าน (ที่เหลือ): ${g.parts.length - taken.size} คน${g.rc && g.rc['ชาวบ้าน'] ? ` (ตั้งไว้ ${g.rc['ชาวบ้าน']}${g.rc['ชาวบ้าน'] === g.parts.length - taken.size ? ' ✓' : ' ⚠ ไม่ตรง'})` : ''}</small></p>
+    <p><small>ยังไม่ได้เลือก role: ${g.parts.length - taken.size} คน (จะเป็นชาวบ้านอัตโนมัติ)</small></p>
     <div class="row"><button class="g" data-a="back">ย้อนกลับ</button><button data-a="begin">ไปโหวตก่อนคืนที่ 1</button><button class="d" data-a="cancel">ยกเลิก</button></div>`;
   }
   const d = dead(g), alive = g.players.filter(p => !d.has(p.name)).map(p => p.name);
