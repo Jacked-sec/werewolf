@@ -155,7 +155,7 @@ function Rg() {
   }
   if (g.ph === 'เช็ค') {
     const taken = new Set(Object.values(g.assign).flat());
-    const roles = checkRoles(g), firstW = roles.findIndex(wolf), n = g.parts.length - taken.size;
+    const roles = checkRoles(g), firstW = roles.findIndex(wolf), n = (g.rc && g.rc['ชาวบ้าน']) || g.parts.length - taken.size; // ใช้จำนวนที่ตั้งไว้ ถ้าไม่ตั้งใช้จำนวนที่เหลือ
     const vil = n > 0 ? `<li>"ชาวบ้าน ${n} คน ชูนิ้วขึ้นมา"</li>` : ''; // เรียกก่อนฝั่งหมาป่า (หมาป่าอยู่ท้ายสุดเสมอ)
     return `<h2>เช็ค role</h2>
     <p><small>อ่านบทตามลำดับ กดวงเล็บเพื่อเลือกว่าใครเป็น role นั้น คนที่ไม่ได้เลือกจะเป็นชาวบ้าน</small></p>
