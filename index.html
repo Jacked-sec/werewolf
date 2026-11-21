@@ -155,17 +155,18 @@ function Rg() {
   }
   if (g.ph === 'เช็ค') {
     const taken = new Set(Object.values(g.assign).flat());
-    const roles = checkRoles(g);
+    const roles = checkRoles(g), firstW = roles.findIndex(wolf), n = g.parts.length - taken.size;
+    const vil = n > 0 ? `<li>"ชาวบ้าน ${n} คน ชูนิ้วขึ้นมา"</li>` : ''; // เรียกก่อนฝั่งหมาป่า (หมาป่าอยู่ท้ายสุดเสมอ)
     return `<h2>เช็ค role</h2>
     <p><small>อ่านบทตามลำดับ กดวงเล็บเพื่อเลือกว่าใครเป็น role นั้น คนที่ไม่ได้เลือกจะเป็นชาวบ้าน</small></p>
     <ol class="sc"><li>"ทุกคนหลับตา ปิดหน้าไว้ ไม่แอบดู"</li>
     ${roles.map((r, j) => {
       const a = g.assign[r] || [], max = roleMax(g, r);
-      return `<li>"${esc(r)}ลืมตา" <button class="g" data-a="who" data-j="${j}">(${a.length ? esc(a.join(', ')) : 'เลือก'}${max > 1 && max < 99 ? ` ${a.length}/${max}` : ''})</button> "${esc(r)}หลับตา"
+      return (j === firstW ? vil : '') + `<li>"${esc(r)}ลืมตา" <button class="g" data-a="who" data-j="${j}">(${a.length ? esc(a.join(', ')) : 'เลือก'}${max > 1 && max < 99 ? ` ${a.length}/${max}` : ''})</button> "${esc(r)}หลับตา"
         ${pickJ === j ? `<div class="chips">${g.parts.filter(n => a.includes(n) || !taken.has(n)).map(n =>
           `<button class="g${a.includes(n) ? ' on' : ''}"${!a.includes(n) && a.length >= max ? ' disabled' : ''} data-a="asg" data-j="${j}" data-n="${g.parts.indexOf(n)}">${esc(n)}</button>`).join('')}
           <button data-a="who" data-j="${j}">เสร็จ</button></div>` : ''}</li>`;
-    }).join('')}
+    }).join('')}${firstW < 0 ? vil : ''}
     <li>"ทุกคนลืมตาได้"</li></ol>
     <p><small>ชาวบ้าน (ที่เหลือ): ${g.parts.length - taken.size} คน${g.rc && g.rc['ชาวบ้าน'] ? ` (ตั้งไว้ ${g.rc['ชาวบ้าน']}${g.rc['ชาวบ้าน'] === g.parts.length - taken.size ? ' ✓' : ' ⚠ ไม่ตรง'})` : ''}</small></p>
     <div class="row"><button class="g" data-a="back">ย้อนกลับ</button><button data-a="begin">ไปโหวตก่อนคืนที่ 1</button><button class="d" data-a="cancel">ยกเลิก</button></div>`;
