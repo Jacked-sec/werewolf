@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="th">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>บันทึกเกมหมาป่า</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:16px system-ui,sans-serif;background:#14161c;color:#e8e8ee;padding-bottom:40px}
+button,input,select,textarea{font:inherit;padding:10px;border-radius:8px;border:1px solid #3a3f4d;background:#222633;color:inherit}
+button{background:#3b5bdb;border-color:#3b5bdb;cursor:pointer}
+button.g{background:#222633;border-color:#3a3f4d}
+button.d{background:#c92a2a;border-color:#c92a2a}
+#tm{position:sticky;top:0;z-index:9;display:flex;gap:6px;align-items:center;padding:8px 12px;background:#0d0f14;border-bottom:1px solid #2a2f3d}
+#tt{font-size:28px;font-variant-numeric:tabular-nums;min-width:90px}
+#tt.z{color:#ff6b6b}
+nav{display:flex}
+nav button{flex:1;border-radius:0;background:#1b1e27;border-color:#2a2f3d}
+nav button.on{background:#3b5bdb}
+main{padding:12px;max-width:640px;margin:auto}
+form,.row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+form input,form select{flex:1;min-width:120px}
+ul{list-style:none;padding:0;margin:8px 0}
+li{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #2a2f3d}
+li.dead span{text-decoration:line-through;opacity:.5}
+h2,h3{margin:16px 0 4px}
+details{background:#1b1e27;border-radius:8px;padding:8px 12px;margin:8px 0}
+textarea{width:100%}
+small{opacity:.7}
+.pl{padding:8px 0;border-bottom:1px solid #2a2f3d}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chips button{padding:6px 10px}
+.chips button.on{background:#3b5bdb;border-color:#3b5bdb}
+.sc{padding-left:22px}
+.sc li{display:list-item;border:0;padding:6px 0;line-height:1.5}
+</style>
+<div id="tm">
+  <b id="tt">05:00</b>
+  <button class="g" data-t="60">1น</button>
+  <button class="g" data-t="180">3น</button>
+  <button class="g" data-t="300">5น</button>
+  <button id="tg">▶</button>
+</div>
+<nav id="nav"></nav>
+<main id="m"></main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DEF = ['ชาวบ้าน','หมาป่า','ผู้หยั่งรู้','หมอ','นายพราน','แม่มด','คิวปิด','ผู้พิทักษ์','ตัวตลก'];
+const WHY = ['ถูกหมาป่ากัด','ถูกโหวตออก','ถูกยิง','ถูกวางยา','อื่นๆ'];
+const WIN = ['ชาวบ้านชนะ','หมาป่าชนะ','ฝ่ายอื่นชนะ','เสมอ/ไม่จบ'];
+let S = JSON.parse(localStorage.ww || 'null') || {players:[], roles:DEF, games:[], cur:null, mod:''};
+const save = () => localStorage.ww = JSON.stringify(S);
+let tab = 'game';
+const now = () => new Date().toLocaleString('th-TH', {dateStyle:'short', timeStyle:'short'});
+const dead = g => new Set(g.ev.map(e => e.name).filter(Boolean));
+// รอบเกม: เช็ค role → โหวต(0) → คืน1 → วัน1 → โหวต1 → คืน2 → ... (โหวต n = หลังวัน n)
+const phLabel = (ph, n) => ph === 'โหวต' ? (n ? `โหวตวันที่ ${n}` : 'โหวตก่อนคืนที่ 1') : `${ph}ที่ ${n}`;
+const nextLabel = g => g.ph === 'คืน' ? `จบคืนที่ ${g.n}` : g.ph === 'วัน' ? `เริ่มโหวตวันที่ ${g.n}` : `เริ่มคืนที่ ${g.n + 1}`;
+const wolf = r => r.includes('หมาป่า');
+const winner = g => { // เสนอผู้ชนะอัตโนมัติ: หมาป่าหมด = ชาวบ้านชนะ, หมาป่า >= ที่เหลือ = หมาป่าชนะ
+  const d = dead(g), w = g.players.filter(p => wolf(p.role) && !d.has(p.name)).length, o = g.players.filter(p => !wolf(p.role) && !d.has(p.name)).length;
+  return !g.players.length ? '' : !w ? 'ชาวบ้านชนะ' : w >= o ? 'หมาป่าชนะ' : '';
+};
+const evHtml = (g, del) => g.ev.length ? '<ul>' + g.ev.map((e, i) =>
+  `<li><span>${phLabel(e.ph, e.n)}: ${e.name ? `<b>${esc(e.name)}</b> ` : ''}${esc(e.why)}${e.note ? ' <small>(' + esc(e.note) + ')</small>' : ''}</span>${del ? `<button class="g" data-a="delev" data-i="${i}">ลบ</button>` : ''}</li>`).join('') + '</ul>' : '<p><small>ยังไม่มีเหตุการณ์</small></p>';
+const actsHtml = g => {
+  const rows = Object.entries(g.acts || {}).map(([k, v]) => [...k.split('|'), v]).sort((a, b) => a[0] - b[0]);
+  return rows.length ? '<h3>การใช้สกิล</h3><ul>' + rows.map(([n, r, l, v]) => `<li><span>คืนที่ ${n}: ${esc(r)} ${esc(l)} → <b>${esc(v)}</b></span></li>`).join('') + '</ul>' : '';
+};
+const opts =(arr, sel) => arr.map(x => `<option${x === sel ? ' selected' : ''}>${esc(x)}</option>`).join('');
+
+let draft = {}; // index ผู้เล่นที่ติ๊กร่วมเกม ก่อนเริ่มเช็ค role
+// role ที่เรียกในรอบเช็ค: ไม่รวมชาวบ้าน และฝั่งหมาป่า (ชื่อมี "หมาป่า") อยู่ท้ายสุดเสมอ
+const gameRoles = () => S.roles.filter(x => x !== 'ชาวบ้าน');
+const checkRoles = g => {
+  const r = gameRoles().filter(x => !g.rc || g.rc[x]), w = x => x.includes('หมาป่า'); // เกมเก่าไม่มี rc = ทุก role
+  return [...r.filter(x => !w(x)), ...r.filter(w)];
+};
+const roleMax = (g, r) => g.rc ? g.rc[r] || 1 : 99;
+let roleDraft = S.lastRoles || {}; // role ที่ติ๊กไว้ -> จำนวน (จำไว้ใช้เกมถัดไป)
+let pickJ = -1; // role ที่กำลังเปิดตัวเลือกคนในหน้าเช็ค role
+
+// บทพูดตอนกลางคืน ตามลำดับที่ role ตื่น [role, บท, เฉพาะคืนแรก]
+const NIGHT = [
+  ['คิวปิด', '"คิวปิดตื่นขึ้น ชี้คู่รัก 2 คน" ... แตะไหล่ทั้งสองคน ... "คิวปิดหลับตา" "คู่รักลืมตา มองหน้ากัน แล้วหลับตา"', 1],
+  ['ผู้พิทักษ์', '"ผู้พิทักษ์ตื่นขึ้น เลือกคนที่จะปกป้องคืนนี้ (ห้ามซ้ำคนเดิมสองคืนติด)" ... "ผู้พิทักษ์หลับตา"'],
+  ['หมาป่า', '"หมาป่าตื่นขึ้น เลือกเหยื่อของคืนนี้" ... รอตกลงกัน ... "หมาป่าหลับตา"'],
+  ['ผู้หยั่งรู้', '"ผู้หยั่งรู้ตื่นขึ้น ชี้คนที่อยากตรวจ" ... ตอบ: โป้งขึ้น = หมาป่า, โป้งลง = ไม่ใช่ ... "ผู้หยั่งรู้หลับตา"'],
+  ['หมอ', '"หมอตื่นขึ้น เลือกคนที่จะรักษาคืนนี้" ... "หมอหลับตา"'],
+  ['แม่มด', '"แม่มดตื่นขึ้น คนนี้ถูกหมาป่าเลือก (ชี้เหยื่อ) จะใช้ยาชุบชีวิตไหม? จะใช้ยาพิษกับใครไหม?" ... "แม่มดหลับตา"'],
+];
+// ช่องให้ mod กดเลือกเป้าหมายสกิลของแต่ละ role ในช่วงคืน
+const ACTS = {'คิวปิด': ['คู่รัก 1', 'คู่รัก 2'], 'ผู้พิทักษ์': ['ปกป้อง'], 'หมาป่า': ['กัด'], 'ผู้หยั่งรู้': ['ตรวจ'], 'หมอ': ['รักษา'], 'แม่มด': ['ชุบ', 'พิษ']};
+let pickA = ''; // key ช่องสกิลที่กำลังเปิดตัวเลือก
+const SILENT =['ชาวบ้าน', 'ตัวตลก', 'นายพราน']; // ไม่ตื่นกลางคืน
+
+function script(g) {
+  const has = r => g.players.some(p => p.role === r);
+  if (g.ph === 'โหวต') {
+    const s = [g.n ? '"ถึงเวลาโหวตแล้ว ใครสงสัยใครให้เตรียมตัวชี้"' : '"ก่อนเข้าคืนแรก ทุกคนลืมตาอยู่ มาโหวตกันก่อนว่าจะเอาใครออก"',
+      '"นับสาม ชี้คนที่สงสัยพร้อมกัน 1... 2... 3!"',
+      '"คนที่ได้โหวตมากที่สุดออกจากเกม" ผ่าน = เลือกชื่อด้านล่างแล้วกด "โหวตผ่าน" / เสมอหรือไม่ผ่าน = กด "โหวตไม่ผ่าน"'];
+    if (has('นายพราน')) s.push('ถ้านายพรานถูกโหวตออก: "นายพรานเลือกยิงใครก็ได้ 1 คนก่อนจากไป" แล้วบันทึกด้วยฟอร์ม "บันทึกคนตาย" (ถูกยิง)');
+    s.push('ตรวจผล: หมาป่าหมด = ชาวบ้านชนะ / หมาป่าเท่าหรือมากกว่าที่เหลือ = หมาป่าชนะ (ระบบเตือนด้านบนให้)');
+    s.push(`ถ้าเกมยังไม่จบ "ทุกคนหลับตา" แล้วกด "เริ่มคืนที่ ${g.n + 1}"`);
+    return s;
+  }
+  if (g.ph === 'คืน') {
+    const s = ['"ทุกคนหลับตา ปิดหน้าไว้ ไม่แอบดู"'];
+    NIGHT.forEach(([r, t, first]) => { if (has(r) && (!first || g.n === 1)) s.push({t, role: r, acts: ACTS[r]}); });
+    g.players.map(p => p.role).filter((r, i, a) => a.indexOf(r) === i)
+      .filter(r => !NIGHT.some(n => n[0] === r) && !SILENT.includes(r))
+      .forEach(r => s.push({t: `"${r}ตื่นขึ้น ทำหน้าที่ของคุณ" ... "${r}หลับตา" (role นี้ไม่มีบทสำเร็จรูป ปรับเอง)`, role: r, acts: ['ใช้กับ']}));
+    s.push(`"ทุกคนลืมตาได้" แล้วกด "จบคืนที่ ${g.n}"`);
+    return s;
+  }
+  const died = g.ev.filter(e => e.ph === 'คืน' && e.n === g.n).map(e => e.name);
+  const s = ['"ทุกคนลืมตา เช้าแล้ว" ... ' + (died.length ? `"เมื่อคืนคนที่ตายคือ ${died.join(', ')}"` : '"เมื่อคืนไม่มีใครตาย"')];
+  if (has('นายพราน') && g.ev.some(e => g.players.find(p => p.name === e.name && p.role === 'นายพราน')))
+    s.push('"นายพรานถูกกำจัด เลือกยิงใครก็ได้ 1 คนก่อนจากไป"');
+  s.push('"เปิดอภิปราย แต่ละคนแสดงความเห็นว่าสงสัยใคร" (จับเวลาด้านบน)');
+  s.push(`"หมดเวลาหารือ" แล้วกด "เริ่มโหวตวันที่ ${g.n}"`);
+  return s;
+}
+
+function R() {
+  $('#nav').innerHTML = [['players','ผู้เล่น'],['game','เกม'],['hist','ประวัติ']]
+    .map(([k, v]) => `<button class="${tab === k ? 'on' : ''}" data-tab="${k}">${v}</button>`).join('');
+  $('#m').innerHTML = {players: Rp, game: Rg, hist: Rh}[tab]();
+}
+
+function Rp() {
+  return `<form data-f="addp"><input name="n" placeholder="ชื่อผู้เล่น" required><button>เพิ่ม</button></form>
+  <ul>${S.players.map((p, i) => `<li><span>${esc(p)}</span><button class="g" data-a="delp" data-i="${i}">ลบ</button></li>`).join('')}</ul>
+  <h3>Role (บรรทัดละ 1 role)</h3>
+  <textarea id="roles" rows="9">${esc(S.roles.join('\n'))}</textarea>
+  <div class="row"><button data-a="saveroles">บันทึก role</button></div>
+  <h3>สำรองข้อมูล</h3>
+  <div class="row"><button class="g" data-a="exp">Export JSON</button><input type="file" id="imp" accept=".json"></div>`;
+}
+
+function Rg() {
+  const g = S.cur;
+  if (!g) {
+    if (!S.players.length) return '<p>เพิ่มผู้เล่นในแท็บ "ผู้เล่น" ก่อน</p>';
+    return `<h2>เกมใหม่</h2>
+    <div class="row"><input id="mod" placeholder="ชื่อ mod" value="${esc(S.mod)}" style="flex:1"></div>
+    <p><small>กดชื่อคนที่ร่วมเล่น แล้วไปต่อที่การเช็ค role</small></p>
+    <div class="chips">${S.players.map((p, i) => `<button class="g${draft[i] ? ' on' : ''}" data-a="pick" data-i="${i}">${esc(p)}</button>`).join('')}</div>
+    <h3>role ที่มีในเกม</h3>
+    <ul>${gameRoles().map((r, j) => `<li><label><input type="checkbox" data-rk="${j}"${roleDraft[r] ? ' checked' : ''}> ${esc(r)}</label>
+      ${roleDraft[r] ? `<span>จำนวน <input type="number" min="1" max="9" value="${roleDraft[r]}" data-rc="${j}" style="width:64px"></span>` : ''}</li>`).join('')}</ul>
+    <div class="row"><button data-a="start">ไปเช็ค role (${Object.keys(draft).length} คน)</button></div>`;
+  }
+  if (g.ph === 'เช็ค') {
+    const taken = new Set(Object.values(g.assign).flat());
+    const roles = checkRoles(g);
+    return `<h2>เช็ค role</h2>
+    <p><small>อ่านบทตามลำดับ กดวงเล็บเพื่อเลือกว่าใครเป็น role นั้น คนที่ไม่ได้เลือกจะเป็นชาวบ้าน</small></p>
+    <ol class="sc"><li>"ทุกคนหลับตา ปิดหน้าไว้ ไม่แอบดู"</li>
+    ${roles.map((r, j) => {
+      const a = g.assign[r] || [], max = roleMax(g, r);
+      return `<li>"${esc(r)}ลืมตา" <button class="g" data-a="who" data-j="${j}">(${a.length ? esc(a.join(', ')) : 'เลือก'}${max > 1 && max < 99 ? ` ${a.length}/${max}` : ''})</button> "${esc(r)}หลับตา"
+        ${pickJ === j ? `<div class="chips">${g.parts.filter(n => a.includes(n) || !taken.has(n)).map(n =>
+          `<button class="g${a.includes(n) ? ' on' : ''}"${!a.includes(n) && a.length >= max ? ' disabled' : ''} data-a="asg" data-j="${j}" data-n="${g.parts.indexOf(n)}">${esc(n)}</button>`).join('')}
+          <button data-a="who" data-j="${j}">เสร็จ</button></div>` : ''}</li>`;
+    }).join('')}
+    <li>"ทุกคนลืมตาได้"</li></ol>
+    <p><small>ชาวบ้าน (ที่เหลือ): ${g.parts.length - taken.size} คน</small></p>
+    <div class="row"><button class="g" data-a="back">ย้อนกลับ</button><button data-a="begin">ไปโหวตก่อนคืนที่ 1</button><button class="d" data-a="cancel">ยกเลิก</button></div>`;
+  }
+  const d = dead(g), alive = g.players.filter(p => !d.has(p.name)).map(p => p.name);
+  const actUi = s => (s.acts || []).map(l => {
+    const k = `${g.n}|${s.role}|${l}`, v = (g.acts || {})[k];
+    return `<div class="row"><button class="g" data-a="act" data-k="${esc(k)}">${esc(l)} (${v ? esc(v) : 'เลือก'})</button></div>` +
+      (pickA === k ? `<div class="chips">${alive.map(n => `<button class="g${v === n ? ' on' : ''}" data-a="setact" data-k="${esc(k)}" data-v="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : '');
+  }).join('');
+  const win = winner(g);
+  return `<h2>${phLabel(g.ph, g.n)}</h2>
+  ${win ? `<p><b>⚠ เข้าเงื่อนไขจบเกม: ${win}</b> (กดบันทึกเกมด้านล่าง หรือเล่นต่อก็ได้)</p>` : ''}
+  <div class="row"><button class="g" data-a="back">ย้อนกลับ</button>
+    <button data-a="next">${nextLabel(g)}</button></div>
+  <details open><summary>บทพูด (${phLabel(g.ph, g.n)})</summary><ol class="sc">${script(g).map(s => typeof s === 'string' ? `<li>${esc(s)}</li>` : `<li>${esc(s.t)}${actUi(s)}</li>`).join('')}</ol></details>
+  ${g.ph === 'โหวต' && alive.length ? `<div class="row"><select id="vname">${opts(alive)}</select>
+    <button data-a="votepass">โหวตผ่าน (คนนี้ออก)</button><button class="g" data-a="votefail">โหวตไม่ผ่าน</button></div>` : ''}
+  <ul>${g.players.map(p => `<li class="${d.has(p.name) ? 'dead' : ''}"><span>${esc(p.name)}</span><small>${esc(p.role)}</small></li>`).join('')}</ul>
+  ${alive.length ? `<form data-f="ev"><select name="name">${opts(alive)}</select><select name="why">${opts(WHY)}</select>
+    <input name="note" placeholder="หมายเหตุ"><button>บันทึกคนตาย</button></form>` : ''}
+  <h3>ไทม์ไลน์</h3>${evHtml(g, true)}${actsHtml(g)}
+  <h3>จบเกม</h3>
+  <div class="row"><select id="win">${opts(WIN, win)}</select><button data-a="fin">บันทึกเกม</button><button class="d" data-a="cancel">ยกเลิก</button></div>`;
+}
+
+function Rh() {
+  if (!S.games.length) return '<p>ยังไม่มีเกม</p>';
+  return S.games.map((g, i) => `<details><summary>${esc(g.date)} · mod ${esc(g.mod || '-')} · ${esc(g.winner)}</summary>
+    <ul>${g.players.map(p => `<li><span>${esc(p.name)}</span><small>${esc(p.role)}</small></li>`).join('')}</ul>
+    ${evHtml(g, false)}${actsHtml(g)}
+    <button class="d" data-a="delg" data-i="${i}">ลบเกม</button></details>`).reverse().join('');
+}
+
+document.addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.tab) { tab = t.dataset.tab; return R(); }
+  const a = t.dataset.a, i = +t.dataset.i;
+  if (a === 'next' || a === 'back' || a === 'begin') pickA = '';
+  if (a === 'act') { pickA = pickA === t.dataset.k ? '' : t.dataset.k; return R(); }
+  if (a === 'setact') {
+    const g = S.cur, k = t.dataset.k, v = t.dataset.v;
+    g.acts = g.acts || {};
+    if (g.acts[k] === v) delete g.acts[k]; else g.acts[k] = v;
+    pickA = '';
+  }
+  else if (a === 'delp') S.players.splice(i, 1);
+  else if (a === 'saveroles') {
+    const r = $('#roles').value.split('\n').map(x => x.trim()).filter(Boolean);
+    if (!r.length) return;
+    S.roles = r;
+  }
+  else if (a === 'exp') {
+    const l = document.createElement('a');
+    l.href = URL.createObjectURL(new Blob([JSON.stringify(S)], {type: 'application/json'}));
+    l.download = 'werewolf-backup.json'; l.click(); return;
+  }
+  else if (a === 'start') {
+    const parts = Object.keys(draft).sort((a, b) => a - b).map(k => S.players[k]);
+    if (!parts.length) return alert('เลือกผู้เล่นอย่างน้อย 1 คน');
+    S.lastRoles = roleDraft;
+    S.cur = {date: now(), mod: S.mod, parts, rc: {...roleDraft}, assign: {}, players: [], ev: [], ph: 'เช็ค', n: 0};
+    draft = {}; pickJ = -1;
+  }
+  else if (a === 'pick') {
+    if (draft[i]) delete draft[i]; else draft[i] = 1;
+    return R();
+  }
+  else if (a === 'who') { pickJ = pickJ === +t.dataset.j ? -1 : +t.dataset.j; return R(); }
+  else if (a === 'asg') {
+    const g = S.cur, r = checkRoles(g)[+t.dataset.j], n = g.parts[+t.dataset.n], l = g.assign[r] || [];
+    if (!l.includes(n) && l.length >= roleMax(g, r)) return;
+    g.assign[r] = l.includes(n) ? l.filter(x => x !== n) : [...l, n];
+  }
+  else if (a === 'begin') {
+    const g = S.cur;
+    g.players = g.parts.map(name => ({name, role: Object.keys(g.assign).find(r => g.assign[r].includes(name)) || 'ชาวบ้าน'}));
+    g.ph = 'โหวต'; g.n = 0; pickJ = -1;
+  }
+  else if (a === 'back') {
+    const g = S.cur;
+    if (g.ph === 'เช็ค') { draft = {}; g.parts.forEach(n => { const k = S.players.indexOf(n); if (k >= 0) draft[k] = 1; }); S.cur = null; }
+    else if (g.ph === 'วัน') g.ph = 'คืน';
+    else if (g.ph === 'คืน') { g.ph = 'โหวต'; g.n--; }
+    else if (g.n > 0) g.ph = 'วัน';
+    else { g.ph = 'เช็ค'; g.n = 0; pickJ = -1; }
+  }
+  else if (a === 'next') { const g = S.cur; if (g.ph === 'คืน') g.ph = 'วัน'; else if (g.ph === 'วัน') g.ph = 'โหวต'; else { g.ph = 'คืน'; g.n++; } }
+  else if (a === 'votepass' || a === 'votefail') { // บันทึกผลโหวตแล้วเข้าคืนถัดไปเลย
+    const g = S.cur, ok = a === 'votepass';
+    g.ev.push({ph: 'โหวต', n: g.n, name: ok ? $('#vname').value : '', why: ok ? 'ถูกโหวตออก' : 'โหวตไม่ผ่าน (ไม่มีใครออก)', note: ''});
+    g.ph = 'คืน'; g.n++; pickA = '';
+  }
+  else if (a === 'delev') S.cur.ev.splice(i, 1);
+  else if (a === 'fin') { S.cur.winner = $('#win').value; S.games.push(S.cur); S.cur = null; tab = 'hist'; }
+  else if (a === 'cancel') { if (!confirm('ยกเลิกเกมนี้? ข้อมูลจะหาย')) return; S.cur = null; }
+  else if (a === 'delg') { if (!confirm('ลบเกมนี้ถาวร?')) return; S.games.splice(i, 1); }
+  else return;
+  save(); R();
+});
+
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target, v = Object.fromEntries(new FormData(f));
+  if (f.dataset.f === 'addp') {
+    const n = v.n.trim();
+    if (n && !S.players.includes(n)) S.players.push(n);
+  } else if (f.dataset.f === 'ev') {
+    S.cur.ev.push({ph: S.cur.ph, n: S.cur.n, name: v.name, why: v.why, note: v.note.trim()});
+  }
+  save(); R();
+});
+
+document.addEventListener('input', e => {
+  if (e.target.id === 'mod') { S.mod = e.target.value.trim(); save(); }
+  if (e.target.dataset.rc) roleDraft[gameRoles()[+e.target.dataset.rc]] = Math.max(1, Math.min(9, +e.target.value || 1));
+});
+
+document.addEventListener('change', e => {
+  if (e.target.dataset.rk) {
+    const r = gameRoles()[+e.target.dataset.rk];
+    if (roleDraft[r]) delete roleDraft[r]; else roleDraft[r] = 1;
+    return R();
+  }
+  if (e.target.id !== 'imp' || !e.target.files[0]) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!Array.isArray(d.games) || !Array.isArray(d.players)) throw 0;
+      if (!confirm('แทนที่ข้อมูลปัจจุบันทั้งหมด?')) return;
+      S = {players: d.players, roles: d.roles || DEF, games: d.games, cur: d.cur || null, mod: d.mod || ''};
+      save(); R();
+    } catch { alert('ไฟล์ไม่ถูกต้อง'); }
+  };
+  r.readAsText(e.target.files[0]);
+});
+
+// timer
+let tl = 300, run = null;
+const show = () => {
+  $('#tt').textContent = String(Math.floor(tl / 60)).padStart(2, '0') + ':' + String(tl % 60).padStart(2, '0');
+  $('#tt').className = tl === 0 ? 'z' : '';
+  $('#tg').textContent = run ? '⏸' : '▶';
+};
+const stop = () => { clearInterval(run); run = null; };
+$('#tm').addEventListener('click', e => {
+  const t = e.target.closest('button'); if (!t) return;
+  if (t.dataset.t) { stop(); tl = +t.dataset.t; }
+  else if (run) stop();
+  else if (tl > 0) run = setInterval(() => {
+    if (--tl <= 0) { tl = 0; stop(); navigator.vibrate && navigator.vibrate([300, 100, 300]); }
+    show();
+  }, 1000);
+  show();
+});
+
+show(); R();
+</script>
